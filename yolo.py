@@ -141,9 +141,9 @@ class YOLO(object):
             if results[0] is None: 
                 return image
 
-            top_label   = np.array(results[0][:, 6], dtype = 'int32')
-            top_conf    = results[0][:, 4] * results[0][:, 5]
-            top_boxes   = results[0][:, :4]
+            top_label   = np.array(results[0][:, 6], dtype = 'int32')            #类别序号
+            top_conf    = results[0][:, 4] * results[0][:, 5]                    #最终置信度
+            top_boxes   = results[0][:, :4]                                      #预测框坐标
         #---------------------------------------------------------#
         #   设置字体与边框厚度
         #---------------------------------------------------------#
