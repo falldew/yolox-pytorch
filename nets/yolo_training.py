@@ -302,10 +302,29 @@ class YOLOLoss(nn.Module):
 
             area_a = torch.prod(bboxes_a[:, 2:], 1)
             area_b = torch.prod(bboxes_b[:, 2:], 1)
+            #####----------------ljy add diou delta---------------#####
+            center_x1, center_y1 = bboxes_a[:, None, 0], bboxes_a[:, None, 1]
+            center_x2, center_y2 = bboxes_b[:, 0], bboxes_b[:, 1]
+            out_rb = torch.max( 
+                (bboxes_a[:, None, :2] + bboxes_a[:, None, 2:] / 2),
+                (bboxes_b[:, :2] + bboxes_b[:, 2:] / 2),) 
+            out_lt = torch.min(
+                (bboxes_a[:, None, :2] - bboxes_a[:, None, 2:] / 2),
+                (bboxes_b[:, :2] - bboxes_b[:, 2:] / 2),)
+            #####----------------ljy add diou delta---------------#####
+            
         en = (tl < br).type(tl.type()).prod(dim=2)
         area_i = torch.prod(br - tl, 2) * en
-        return area_i / (area_a[:, None] + area_b - area_i)
-
+        #####----------------ljy add diou delta---------------#####
+        inter_diag = (center_x2 - center_x1)**2 + (center_y2 - center_y1)**2
+        outer_diag = torch.prod(out_rb - out_lt, 2) 
+        delta = (inter_diag / outer_diag.clamp(1e-10)) * en
+        #####----------------ljy add diou delta---------------#####
+        return area_i / (area_a[:, None] + area_b - area_i)                     # iou
+        # return area_i / (area_a[:, None] + area_b - area_i) - delta           # diou
+        
+        
+        
     def get_in_boxes_info(self, gt_bboxes_per_image, expanded_strides, x_shifts, y_shifts, total_num_anchors, num_gt, center_radius = 2.5):
         #-------------------------------------------------------#
         #   expanded_strides_per_image  [n_anchors_all]
