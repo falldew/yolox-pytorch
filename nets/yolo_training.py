@@ -48,7 +48,56 @@ class IOUloss(nn.Module):
             area_c = torch.prod(c_br - c_tl, 1)
             giou = iou - (area_c - area_u) / area_c.clamp(1e-16)
             loss = 1 - giou.clamp(min=-1.0, max=1.0)
-
+        elif self.loss_type == "diou":
+            center_x1 = pred[:, 0]
+            center_y1 = pred[:, 1]
+            center_x2 = target[:, 0]
+            center_y2 = target[:, 1]
+            out_max_rb = torch.max((pred[:, :2] + pred[:, 2:] / 2), (target[:, :2] + target[:, 2:] / 2)) 
+            out_min_lt = torch.min((pred[:, :2] - pred[:, 2:] / 2), (target[:, :2] - target[:, 2:] / 2))
+            inter_diag = (center_x2 - center_x1)**2 + (center_y2 - center_y1)**2
+            outer = (out_max_rb - out_min_lt).clamp(min=0)
+            outer_diag = (outer[:, 0] ** 2) + (outer[:, 1] ** 2)
+            delta = inter_diag / outer_diag.clamp(1e-10)
+            loss = (1 - iou + delta) * (2 - bbox_weight)                 # diou + bbox_balance 
+            # loss = 1 - iou + delta                                     # diou
+        elif self.loss_type == "siou":
+            out_max_rb = torch.max((pred[:, :2] + pred[:, 2:] / 2), (target[:, :2] + target[:, 2:] / 2)) 
+            out_min_lt = torch.min((pred[:, :2] - pred[:, 2:] / 2), (target[:, :2] - target[:, 2:] / 2))
+            outer = (out_max_rb - out_min_lt).clamp(min=0)
+            certxy = pred[:, :2] - target[:, :2]
+            sigma = torch.pow(torch.sum(torch.pow(certxy,2),1), 0.5)
+            sin_alpha_1 = torch.abs(certxy[:, 0]) / sigma
+            sin_alpha_2 = torch.abs(certxy[:, 1]) / sigma
+            threshold = pow(2, 0.5) / 2
+            sin_alpha = torch.where(sin_alpha_1 > threshold, sin_alpha_2, sin_alpha_1)
+            # angle_cost = 1 - 2 * torch.pow( torch.sin(torch.arcsin(sin_alpha) - np.pi/4), 2)
+            angle_cost = torch.cos(torch.arcsin(sin_alpha) * 2 - np.pi / 2)
+            rho_xy = pow((certxy / outer), 2)
+            gamma = angle_cost - 2
+            distance_cost = 2 - torch.exp(gamma * rho_xy[:, 0]) - torch.exp(gamma * rho_xy[:, 1])
+            omiga_wh = torch.abs(pred[:, 2:] - target[:, 2:]) / torch.max(pred[:, 2:], target[:, 2:])
+            shape_cost = torch.sum(torch.pow(1 - torch.exp(-1 * omiga_wh), 4), 1)
+            loss = 1 - iou + 0.5 * (distance_cost + shape_cost)
+        elif self.loss_type == "siou":
+            out_max_rb = torch.max((pred[:, :2] + pred[:, 2:] / 2), (target[:, :2] + target[:, 2:] / 2)) 
+            out_min_lt = torch.min((pred[:, :2] - pred[:, 2:] / 2), (target[:, :2] - target[:, 2:] / 2))
+            outer = (out_max_rb - out_min_lt).clamp(min=0)
+            certxy = pred[:, :2] - target[:, :2]
+            sigma = torch.pow(torch.sum(torch.pow(certxy,2),1), 0.5)
+            sin_alpha_1 = torch.abs(certxy[:, 0]) / sigma
+            sin_alpha_2 = torch.abs(certxy[:, 1]) / sigma
+            threshold = pow(2, 0.5) / 2
+            sin_alpha = torch.where(sin_alpha_1 > threshold, sin_alpha_2, sin_alpha_1)
+            # angle_cost = 1 - 2 * torch.pow( torch.sin(torch.arcsin(sin_alpha) - np.pi/4), 2)
+            angle_cost = torch.cos(torch.arcsin(sin_alpha) * 2 - np.pi / 2)
+            rho_xy = pow((certxy / outer), 2)
+            gamma = angle_cost - 2
+            distance_cost = 2 - torch.exp(gamma * rho_xy[:, 0]) - torch.exp(gamma * rho_xy[:, 1])
+            omiga_wh = torch.abs(pred[:, 2:] - target[:, 2:]) / torch.max(pred[:, 2:], target[:, 2:])
+            shape_cost = torch.sum(torch.pow(1 - torch.exp(-1 * omiga_wh), 4), 1)
+            loss = 1 - iou + 0.5 * (distance_cost + shape_cost)
+        
         if self.reduction == "mean":
             loss = loss.mean()
         elif self.reduction == "sum":
